@@ -1,0 +1,241 @@
+if _G.DesyncConnections then
+    for _, conn in pairs(_G.DesyncConnections) do
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+    end
+    _G.DesyncConnections = nil
+end
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui", 10)
+
+-- Limpa versões anteriores
+for _, gui in playerGui:GetChildren() do
+    if gui:IsA("ScreenGui") and string.find(gui.Name, "Desync") then
+        gui:Destroy()
+    end
+end
+
+local function getCharacterParts(char)
+    local parts = {}
+    if char then
+        for _, part in char:GetDescendants() do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                pcall(function()
+                    if part.Transparency < 1 then
+                        table.insert(parts, part)
+                    end
+                end)
+            end
+        end
+    end
+    return parts
+end
+
+-- Função para preparar o personagem (Apenas Anti-Sit)
+local function setupCharacter(char)
+    local hum = char:WaitForChild("Humanoid", 10)
+    if hum then
+        hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+    end
+end
+
+if player.Character then setupCharacter(player.Character) end
+
+local enabled = false
+local connections = {}
+local bodyParts = getCharacterParts(player.Character)
+
+-- Cores
+local corPrincipal = Color3.fromRGB(220, 220, 220) -- Cor cinza do botão
+local corBranco = Color3.fromRGB(255, 255, 255)
+local corPreto = Color3.fromRGB(0, 0, 0)
+local corFundo = Color3.fromRGB(20, 20, 20)
+
+-- Criação da Interface (UI)
+local gui = Instance.new("ScreenGui")
+gui.Name = "DesyncUI"
+gui.ResetOnSpawn = false
+gui.Enabled = true
+gui.Parent = playerGui
+
+-- Frame Principal (Posicionado no canto direito superior)
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 145, 0, 35) 
+main.AnchorPoint = Vector2.new(1, 0)
+main.Position = UDim2.new(1, -20, 0.22, 0)
+main.BackgroundColor3 = corFundo
+main.BackgroundTransparency = 0.15
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
+
+-- Borda (Agora usa a cor do botão)
+local stroke = Instance.new("UIStroke", main)
+stroke.Thickness = 2
+stroke.Color = corPrincipal
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- Quadrado com curvas em volta do ícone (Fundo usa a cor do botão)
+local iconBg = Instance.new("Frame")
+iconBg.Size = UDim2.new(0, 24, 0, 24)
+iconBg.Position = UDim2.new(0, 6, 0.5, -12)
+iconBg.BackgroundColor3 = corPrincipal
+iconBg.BorderSizePixel = 0
+iconBg.Parent = main
+
+Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, 6)
+
+-- Ícone de Raio (Sem coloração artificial, mantém a cor original da imagem)
+local zapIcon = Instance.new("ImageLabel")
+zapIcon.Size = UDim2.new(0, 16, 0, 16)
+zapIcon.Position = UDim2.new(0.5, -8, 0.5, -8)
+zapIcon.BackgroundTransparency = 1
+zapIcon.Image = "rbxassetid://136409727238182"
+zapIcon.ImageColor3 = corBranco -- Deixar branco no Roblox significa "não aplicar cor por cima"
+zapIcon.Parent = iconBg
+
+-- Título (Texto 17, SEMPRE BRANCO)
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(0.6, 0, 1, 0)
+title.Position = UDim2.new(0, 36, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Desync"
+title.Font = Enum.Font.Arcade
+title.TextSize = 17
+title.TextColor3 = corBranco -- Fixo em Branco
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+-- Fundo do Botão Toggle (Sólido, sem transparência)
+local switch = Instance.new("Frame")
+switch.Size = UDim2.new(0, 40, 0, 20)
+switch.Position = UDim2.new(1, -48, 0.5, -10)
+switch.BackgroundColor3 = corPreto
+switch.BackgroundTransparency = 0 
+switch.BorderSizePixel = 0
+switch.Parent = main
+Instance.new("UICorner", switch).CornerRadius = UDim.new(0, 6)
+
+local switchStroke = Instance.new("UIStroke", switch)
+switchStroke.Thickness = 1
+switchStroke.Color = Color3.fromRGB(40, 40, 40)
+
+-- Bolinha do Botão Toggle (Branca para destacar sobre o fundo ativado que será cinza)
+local knob = Instance.new("Frame")
+knob.Size = UDim2.new(0, 16, 0, 16)
+knob.Position = UDim2.new(0, 2, 0.5, -8)
+knob.BackgroundColor3 = corBranco
+knob.BorderSizePixel = 0
+knob.Parent = switch
+Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 4)
+
+-- Botão Invisível para clique
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+toggleBtn.BackgroundTransparency = 1
+toggleBtn.Text = ""
+toggleBtn.Parent = switch
+
+-- Sistema de Arrastar
+local dragging = false
+local dragInput, dragStart, startPos
+
+main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Lógica do Desync
+local function toggleDesync()
+    enabled = not enabled
+    bodyParts = getCharacterParts(player.Character)
+    
+    if enabled then
+        TweenService:Create(switch, TweenInfo.new(0.2), {BackgroundColor3 = corPrincipal}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2), {Position = UDim2.new(1, -18, 0.5, -8)}):Play()
+        for _, part in bodyParts do pcall(function() part.Transparency = 0.5 end) end
+    else
+        TweenService:Create(switch, TweenInfo.new(0.2), {BackgroundColor3 = corPreto}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
+        for _, part in bodyParts do pcall(function() part.Transparency = 0 end) end
+    end
+end
+
+toggleBtn.Activated:Connect(toggleDesync)
+
+-- Tecla Q
+connections[#connections + 1] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Q then
+        toggleDesync()
+    end
+end)
+
+-- Loop principal
+connections[#connections + 1] = RunService.Heartbeat:Connect(function()
+    local char = player.Character
+    local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    
+    if enabled and hrp and hum then
+        if hum.Health <= 0 then
+            hum.CameraOffset = Vector3.new(0, 0, 0)
+            return 
+        end
+        
+        if hum.Sit then
+            hum.Sit = false
+        end
+        
+        local cf = hrp.CFrame
+        local camOffset = hum.CameraOffset
+        
+        local hidden = cf * CFrame.new(0, -250000, 0) 
+        hrp.CFrame = hidden
+        hum.CameraOffset = hidden:ToObjectSpace(CFrame.new(cf.Position)).Position
+        
+        RunService.RenderStepped:Wait()
+        
+        hrp.CFrame = cf
+        hum.CameraOffset = camOffset
+    end
+end)
+
+player.CharacterAdded:Connect(function(newChar)
+    setupCharacter(newChar)
+    if enabled then toggleDesync() end
+end)
+
+_G.DesyncConnections = connections
+
+print("Desync com cores sincronizadas ao toggle!")
