@@ -22,6 +22,10 @@ for _, gui in playerGui:GetChildren() do
     end
 end
 
+local enabled = false
+local connections = {}
+
+-- Função para pegar partes do corpo dinamicamente
 local function getCharacterParts(char)
     local parts = {}
     if char then
@@ -38,19 +42,28 @@ local function getCharacterParts(char)
     return parts
 end
 
--- Função para preparar o personagem (Apenas Anti-Sit)
+-- Função para preparar o personagem (Anti-Sit e Suporte a Morphs/Tamanhos)
 local function setupCharacter(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if hum then
         hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
     end
+    
+    -- Detecta se o personagem mudou de forma/recebeu partes novas enquanto o desync tá ligado
+    connections[#connections + 1] = char.DescendantAdded:Connect(function(descendant)
+        if enabled and descendant:IsA("BasePart") and descendant.Name ~= "HumanoidRootPart" then
+            task.delay(0.05, function() -- Aguarda carregar as propriedades
+                pcall(function()
+                    if descendant.Transparency < 1 then
+                        descendant.Transparency = 0.5
+                    end
+                end)
+            end)
+        end
+    end)
 end
 
 if player.Character then setupCharacter(player.Character) end
-
-local enabled = false
-local connections = {}
-local bodyParts = getCharacterParts(player.Character)
 
 -- Cores
 local corPrincipal = Color3.fromRGB(220, 220, 220) -- Cor cinza do botão
@@ -65,11 +78,11 @@ gui.ResetOnSpawn = false
 gui.Enabled = true
 gui.Parent = playerGui
 
--- Frame Principal (Posicionado no canto direito superior)
+-- Frame Principal
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 145, 0, 35) 
 main.AnchorPoint = Vector2.new(1, 0)
-main.Position = UDim2.new(1, -20, 0.22, 0)
+main.Position = UDim2.new(1, -75, 0.22, -59)
 main.BackgroundColor3 = corFundo
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel = 0
@@ -78,13 +91,13 @@ main.Parent = gui
 
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
 
--- Borda (Agora usa a cor do botão)
+-- Borda
 local stroke = Instance.new("UIStroke", main)
 stroke.Thickness = 2
 stroke.Color = corPrincipal
 stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
--- Quadrado com curvas em volta do ícone (Fundo usa a cor do botão)
+-- Quadrado com curvas em volta do ícone
 local iconBg = Instance.new("Frame")
 iconBg.Size = UDim2.new(0, 24, 0, 24)
 iconBg.Position = UDim2.new(0, 6, 0.5, -12)
@@ -94,13 +107,14 @@ iconBg.Parent = main
 
 Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, 6)
 
--- Ícone de Raio (Sem coloração artificial, mantém a cor original da imagem)
+-- Ícone de Raio
 local zapIcon = Instance.new("ImageLabel")
-zapIcon.Size = UDim2.new(0, 16, 0, 16)
-zapIcon.Position = UDim2.new(0.5, -8, 0.5, -8)
+zapIcon.Size = UDim2.new(0.7, 0, 0.7, 0) 
+zapIcon.AnchorPoint = Vector2.new(0.5, 0.5) 
+zapIcon.Position = UDim2.new(0.5, 0, 0.5, 0) 
 zapIcon.BackgroundTransparency = 1
 zapIcon.Image = "rbxassetid://136409727238182"
-zapIcon.ImageColor3 = corBranco -- Deixar branco no Roblox significa "não aplicar cor por cima"
+zapIcon.ImageColor3 = corBranco 
 zapIcon.Parent = iconBg
 
 -- Título (Texto 17, SEMPRE BRANCO)
@@ -111,11 +125,11 @@ title.BackgroundTransparency = 1
 title.Text = "Desync"
 title.Font = Enum.Font.Arcade
 title.TextSize = 17
-title.TextColor3 = corBranco -- Fixo em Branco
+title.TextColor3 = corBranco
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = main
 
--- Fundo do Botão Toggle (Sólido, sem transparência)
+-- Fundo do Botão Toggle
 local switch = Instance.new("Frame")
 switch.Size = UDim2.new(0, 40, 0, 20)
 switch.Position = UDim2.new(1, -48, 0.5, -10)
@@ -129,7 +143,7 @@ local switchStroke = Instance.new("UIStroke", switch)
 switchStroke.Thickness = 1
 switchStroke.Color = Color3.fromRGB(40, 40, 40)
 
--- Bolinha do Botão Toggle (Branca para destacar sobre o fundo ativado que será cinza)
+-- Bolinha do Botão Toggle
 local knob = Instance.new("Frame")
 knob.Size = UDim2.new(0, 16, 0, 16)
 knob.Position = UDim2.new(0, 2, 0.5, -8)
@@ -145,7 +159,7 @@ toggleBtn.BackgroundTransparency = 1
 toggleBtn.Text = ""
 toggleBtn.Parent = switch
 
--- Sistema de Arrastar
+-- Sistema de Arrastar UI
 local dragging = false
 local dragInput, dragStart, startPos
 
@@ -179,7 +193,7 @@ end)
 -- Lógica do Desync
 local function toggleDesync()
     enabled = not enabled
-    bodyParts = getCharacterParts(player.Character)
+    local bodyParts = getCharacterParts(player.Character)
     
     if enabled then
         TweenService:Create(switch, TweenInfo.new(0.2), {BackgroundColor3 = corPrincipal}):Play()
@@ -194,7 +208,7 @@ end
 
 toggleBtn.Activated:Connect(toggleDesync)
 
--- Tecla Q
+-- Tecla Q para o Desync
 connections[#connections + 1] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Q then
         toggleDesync()
@@ -220,7 +234,9 @@ connections[#connections + 1] = RunService.Heartbeat:Connect(function()
         local cf = hrp.CFrame
         local camOffset = hum.CameraOffset
         
-        local hidden = cf * CFrame.new(0, -250000, 0) 
+        -- MUDA O EIXO PARA O LADO (X), evitando matar gigantes por atingir o limite do Void (-Y)
+        local hidden = cf * CFrame.new(95000, 0, 0) 
+        
         hrp.CFrame = hidden
         hum.CameraOffset = hidden:ToObjectSpace(CFrame.new(cf.Position)).Position
         
@@ -233,9 +249,13 @@ end)
 
 player.CharacterAdded:Connect(function(newChar)
     setupCharacter(newChar)
-    if enabled then toggleDesync() end
+    if enabled then 
+        task.wait(0.2) -- Garante que o personagem carregou antes de aplicar
+        toggleDesync() 
+        toggleDesync() -- Desliga e liga para forçar atualização das partes
+    end
 end)
 
 _G.DesyncConnections = connections
 
-print("Desync com cores sincronizadas ao toggle!")
+print("Desync com suporte a Morphs e Gigantes carregado!")
