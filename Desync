@@ -24,6 +24,7 @@ end
 
 local enabled = false
 local connections = {}
+local toggleDesync -- Declaração prévia para poder usar na função de morte
 
 -- Função para pegar partes do corpo dinamicamente
 local function getCharacterParts(char)
@@ -42,11 +43,18 @@ local function getCharacterParts(char)
     return parts
 end
 
--- Função para preparar o personagem (Anti-Sit e Suporte a Morphs/Tamanhos)
+-- Função para preparar o personagem (Anti-Sit, Suporte a Morphs e Desligar ao Morrer)
 local function setupCharacter(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if hum then
         hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        -- DESLIGA O DESYNC AUTOMATICAMENTE AO MORRER
+        connections[#connections + 1] = hum.Died:Connect(function()
+            if enabled and toggleDesync then
+                toggleDesync()
+            end
+        end)
     end
     
     -- Detecta se o personagem mudou de forma/recebeu partes novas enquanto o desync tá ligado
@@ -76,13 +84,14 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "DesyncUI"
 gui.ResetOnSpawn = false
 gui.Enabled = true
+gui.DisplayOrder = 999999 -- Força a ficar acima de outras UIs do jogo
 gui.Parent = playerGui
 
 -- Frame Principal
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 145, 0, 35) 
-main.AnchorPoint = Vector2.new(1, 0)
-main.Position = UDim2.new(1, -75, 0.22, -59)
+main.AnchorPoint = Vector2.new(0, 0) -- Âncora na esquerda
+main.Position = UDim2.new(0.1, -58, 0.36, -118) -- Mesma altura do Fly, lado esquerdo
 main.BackgroundColor3 = corFundo
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel = 0
@@ -190,8 +199,8 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Lógica do Desync
-local function toggleDesync()
+-- Lógica do Desync (Agora associada à variável pré-declarada)
+toggleDesync = function()
     enabled = not enabled
     local bodyParts = getCharacterParts(player.Character)
     
@@ -222,6 +231,7 @@ connections[#connections + 1] = RunService.Heartbeat:Connect(function()
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     
     if enabled and hrp and hum then
+        -- Checagem de segurança dupla de vida
         if hum.Health <= 0 then
             hum.CameraOffset = Vector3.new(0, 0, 0)
             return 
@@ -242,20 +252,20 @@ connections[#connections + 1] = RunService.Heartbeat:Connect(function()
         
         RunService.RenderStepped:Wait()
         
-        hrp.CFrame = cf
-        hum.CameraOffset = camOffset
+        -- Somente restaura se ele continuou vivo durante a espera do frame
+        if hum.Health > 0 then
+            hrp.CFrame = cf
+            hum.CameraOffset = camOffset
+        end
     end
 end)
 
 player.CharacterAdded:Connect(function(newChar)
     setupCharacter(newChar)
-    if enabled then 
-        task.wait(0.2) -- Garante que o personagem carregou antes de aplicar
-        toggleDesync() 
-        toggleDesync() -- Desliga e liga para forçar atualização das partes
-    end
+    -- Ao resetar, como adicionamos a verificação de morte, o ToggleDesync será chamado automaticamente
+    -- portanto, não precisamos ligar e desligar aqui para forçar.
 end)
 
 _G.DesyncConnections = connections
 
-print("Desync com suporte a Morphs e Gigantes carregado!")
+print("Desync com Desligamento na Morte e Posicionado à Esquerda carregado!")
